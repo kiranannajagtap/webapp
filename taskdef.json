@@ -1,0 +1,30 @@
+{
+  "family": "test-ecs-taskdef",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::152247411618:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::152247411618:role/ecsTaskRole",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "3072",
+  "containerDefinitions": [
+    {
+      "name": "test-container",
+      "image": "<IMAGE1_NAME>",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/test-ecs-taskdef",
+          "awslogs-region": "eu-west-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
