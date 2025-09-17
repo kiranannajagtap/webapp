@@ -1,0 +1,80 @@
+name: Deploy to ECS with CodeDeploy (Blue/Green) - No Secrets
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: "eu-west-1"               # Your AWS region
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ECR_REPOSITORY: "test-ecr"
+      ECS_CLUSTER: "test-ecs-cluster"
+      ECS_SERVICE: "test-ecs-service"
+      CODE_DEPLOY_APP: "test-codepipeline-app"
+      CODE_DEPLOY_GROUP: "test-codepipeline-dp-gp"
+      TASK_DEF_TEMPLATE: ecs-task-def.json
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image to ECR
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+
+          docker build -t ${IMAGE_URI} .
+          docker push ${IMAGE_URI}
+
+      - name: Replace image URI placeholder in task definition
+        env:
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+          TASK_DEF_TEMPLATE: ${{ env.TASK_DEF_TEMPLATE }}
+        run: |
+          export IMAGE_URI=${IMAGE_URI}
+          envsubst < $TASK_DEF_TEMPLATE > new-task-def.json
+
+      - name: Register new task definition
+        id: register-task-def
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://new-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "TASK_DEF_ARN=${TASK_DEF_ARN}" >> $GITHUB_ENV
+
+      - name: Debug Task Definition ARN
+        run: |
+          echo "New Task Definition ARN: $TASK_DEF_ARN"
+
+      - name: Create CodeDeploy blue/green deployment
+        env:
+          CODE_DEPLOY_APP: ${{ env.CODE_DEPLOY_APP }}
+          CODE_DEPLOY_GROUP: ${{ env.CODE_DEPLOY_GROUP }}
+          TASK_DEF_ARN: ${{ env.TASK_DEF_ARN }}
+        run: |
+          aws deploy create-deployment \
+            --application-name $CODE_DEPLOY_APP \
+            --deployment-group-name $CODE_DEPLOY_GROUP \
+            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
+            --deployment-style deploymentType=BLUE_GREEN,deploymentOption=WITH_TRAFFIC_CONTROL \
+            --task-definition $TASK_DEF_ARN \
+            --description "GitHub Actions ECS blue/green deployment"
