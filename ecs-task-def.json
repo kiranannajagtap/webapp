@@ -9,7 +9,7 @@
   "containerDefinitions": [
     {
       "name": "test-container",
-      "image": "<IMAGE_URI>",
+      "image": "${IMAGE_URI}",
       "cpu": 0,
       "essential": true,
       "portMappings": [
