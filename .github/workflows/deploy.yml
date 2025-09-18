@@ -19,6 +19,7 @@ jobs:
       CODE_DEPLOY_APP: "test-codepipeline-app"
       CODE_DEPLOY_GROUP: "test-codepipeline-dp-gp"
       TASK_DEF_TEMPLATE: ecs-task-def.json
+      S3_BUCKET: "test-code-deploy-bucket-k"
 
     steps:
       - name: Checkout code
@@ -52,7 +53,6 @@ jobs:
           IMAGE_URI: ${{ env.IMAGE_URI }}
           TASK_DEF_TEMPLATE: ${{ env.TASK_DEF_TEMPLATE }}
         run: |
-          export IMAGE_URI=${IMAGE_URI}
           envsubst < $TASK_DEF_TEMPLATE > new-task-def.json
 
       - name: Register new task definition
@@ -65,7 +65,7 @@ jobs:
         run: |
           echo "New Task Definition ARN: $TASK_DEF_ARN"
 
-      - name: Create AppSpec file in repository
+      - name: Create AppSpec file
         run: |
           cat > appspec.yml << EOF
           version: 0.0
@@ -73,34 +73,22 @@ jobs:
             - TargetService:
                 Type: AWS::ECS::Service
                 Properties:
-                  TaskDefinition: ${{ env.TASK_DEF_ARN }}
+                  TaskDefinition: $TASK_DEF_ARN
                   LoadBalancerInfo:
                     ContainerName: "test-container"
                     ContainerPort: 80
                   PlatformVersion: "LATEST"
           EOF
 
-      - name: Create CodeDeploy Deployment
-        id: create_deployment
+      - name: Upload AppSpec to S3
         run: |
-          DEPLOYMENT_ID=$(aws deploy create-deployment \
+          aws s3 cp appspec.yml s3://${S3_BUCKET}/appspec-${GITHUB_SHA}.yml
+
+      - name: Create CodeDeploy Deployment
+        run: |
+          aws deploy create-deployment \
             --application-name $CODE_DEPLOY_APP \
             --deployment-group-name $CODE_DEPLOY_GROUP \
             --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
             --description "GitHub Actions ECS blue/green deployment" \
-            --revision revisionType=GitHub,gitHubLocation="{repository=${{ github.repository }},commitId=${{ github.sha }}}" \
-            --query 'deploymentId' --output text)
-          echo "DEPLOYMENT_ID=${DEPLOYMENT_ID}" >> $GITHUB_ENV
-
-      - name: Check CodeDeploy Deployment Status
-        run: |
-          aws deploy get-deployment \
-            --deployment-id ${{ steps.create_deployment.outputs.deployment-id }}
-
-      - name: Update ECS Service
-        run: |
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --task-definition ${{ env.TASK_DEF_ARN }} \
-            --force-new-deployment
+            --revision revisionType=S3,s3Location="{bucket=${S3_BUCKET},key=appspec-${GITHUB_SHA}.yml,bundleType=YAML}"
