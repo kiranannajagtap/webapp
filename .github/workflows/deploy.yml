@@ -89,6 +89,5 @@ jobs:
           aws deploy create-deployment \
             --application-name $CODE_DEPLOY_APP \
             --deployment-group-name $CODE_DEPLOY_GROUP \
-            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
             --description "GitHub Actions ECS blue/green deployment" \
             --revision revisionType=S3,s3Location="{bucket=${S3_BUCKET},key=appspec-${GITHUB_SHA}.yml,bundleType=YAML}"
