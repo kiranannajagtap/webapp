@@ -75,7 +75,7 @@ jobs:
                 Properties:
                   TaskDefinition: ${{ env.TASK_DEF_ARN }}
                   LoadBalancerInfo:
-                    ContainerName: "your-container-name"
+                    ContainerName: "test-container"
                     ContainerPort: 80
                   PlatformVersion: "LATEST"
           EOF
