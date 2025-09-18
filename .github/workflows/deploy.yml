@@ -64,22 +64,43 @@ jobs:
       - name: Debug Task Definition ARN
         run: |
           echo "New Task Definition ARN: $TASK_DEF_ARN"
-        
-      - name: Upgrade AWS CLI
-        run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install --update
-          aws --version
 
-      - name: Create CodeDeploy blue/green deployment
-        env:
-          CODE_DEPLOY_APP: ${{ env.CODE_DEPLOY_APP }}
-          CODE_DEPLOY_GROUP: ${{ env.CODE_DEPLOY_GROUP }}
-          TASK_DEF_ARN: ${{ env.TASK_DEF_ARN }}
+      - name: Create AppSpec file in repository
         run: |
-          aws deploy create-deployment \
+          cat > appspec.yml << EOF
+          version: 0.0
+          Resources:
+            - TargetService:
+                Type: AWS::ECS::Service
+                Properties:
+                  TaskDefinition: ${{ env.TASK_DEF_ARN }}
+                  LoadBalancerInfo:
+                    ContainerName: "your-container-name"
+                    ContainerPort: 80
+                  PlatformVersion: "LATEST"
+          EOF
+
+      - name: Create CodeDeploy Deployment
+        id: create_deployment
+        run: |
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
             --application-name $CODE_DEPLOY_APP \
             --deployment-group-name $CODE_DEPLOY_GROUP \
             --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
-            --description "GitHub Actions ECS blue/green deployment"
+            --description "GitHub Actions ECS blue/green deployment" \
+            --revision revisionType=GitHub,gitHubLocation="{repository=${{ github.repository }},commitId=${{ github.sha }}}" \
+            --query 'deploymentId' --output text)
+          echo "DEPLOYMENT_ID=${DEPLOYMENT_ID}" >> $GITHUB_ENV
+
+      - name: Check CodeDeploy Deployment Status
+        run: |
+          aws deploy get-deployment \
+            --deployment-id ${{ steps.create_deployment.outputs.deployment-id }}
+
+      - name: Update ECS Service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ env.TASK_DEF_ARN }} \
+            --force-new-deployment
