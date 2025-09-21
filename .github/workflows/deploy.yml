@@ -13,13 +13,13 @@ jobs:
       AWS_REGION: "eu-west-1"               # Your AWS region
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      ECR_REPOSITORY: "test-ecr"
+      ECR_REPOSITORY: "test-ecr-repo"
       ECS_CLUSTER: "test-ecs-cluster"
       ECS_SERVICE: "test-ecs-service"
-      CODE_DEPLOY_APP: "test-codepipeline-app"
-      CODE_DEPLOY_GROUP: "test-codepipeline-dp-gp"
+      CODE_DEPLOY_APP: "test-codedeploy-app"
+      CODE_DEPLOY_GROUP: "test-deployment-group"
       TASK_DEF_TEMPLATE: ecs-task-def.json
-      S3_BUCKET: "test-code-deploy-bucket-k"
+      S3_BUCKET: "bucket-to-store-appspec"
 
     steps:
       - name: Checkout code
@@ -89,11 +89,5 @@ jobs:
           aws deploy create-deployment \
             --application-name $CODE_DEPLOY_APP \
             --deployment-group-name $CODE_DEPLOY_GROUP \
-<<<<<<< HEAD
-            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
-            --description "GitHub Actions ECS blue/green deployment"
-            --revision "revisionType=AppSpecContent,appSpecContent=file://appspec.yaml"
-=======
             --description "GitHub Actions ECS blue/green deployment" \
             --revision revisionType=S3,s3Location="{bucket=${S3_BUCKET},key=appspec-${GITHUB_SHA}.yml,bundleType=YAML}"
->>>>>>> 6737866ebb103e6de99a8827193cb1b02d49915e
